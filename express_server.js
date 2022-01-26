@@ -23,20 +23,18 @@ app.get("/urls.json", (req, res) => {
   res.json(urlDatabase);
 });
 
-app.get("/", (req, res) => {
-  res.send("Hello!");
-});
-
+//CREATE NEW PAGE
 app.get("/urls/new", (req, res) => {
   res.render("urls_new", )
 })
 
+//MAIN PAGE
 app.get("/urls", (req, res) => {
   const templateVars = { urls: urlDatabase };
   res.render("urls_index", templateVars);
 });
 
-
+//IF NEW URL, CREATE SHORTURL
 app.post("/urls", (req, res) => {
   longURL = req.body.longURL;
   shortURL = generateRandomString(6, "1234567890qwertyuioplkjhgfdsazxcvbnmQWERTYUIOPLKJHGFDSAZXCVBNM");
@@ -44,20 +42,25 @@ app.post("/urls", (req, res) => {
   res.redirect(`/urls/${shortURL}`); 
 });
 
-
+//NEW URL VIEW PAGE
 app.get("/urls/:shortURL", (req, res) => {
   console.log(urlDatabase)
   const templateVars = { shortURL: req.params.shortURL, longURL: urlDatabase[req.params.shortURL]};
   res.render("urls_show", templateVars);
 });
 
+//SHORTURL TO LONGURL
 app.get("/u/:shortURL", (req, res) => {
   const longURL = urlDatabase[req.params.shortURL];
-  console.log("shortURL", shortURL)
-  console.log("longURL", longURL)
   res.redirect(longURL);
 });
 
+//DELETES AN URL
+app.post("/urls/:shortURL/delete", (req, res) => {
+  const shortURL = req.params.shortURL;
+  delete urlDatabase[shortURL];
+  res.redirect("/urls");
+})
 
 app.listen(PORT, () => {
   console.log(`Example app listening on port ${PORT}!`);
