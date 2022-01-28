@@ -75,9 +75,33 @@ app.get("/urls", (req, res) => {
 
 //USER LOGIN 
 app.post("/login", (req, res) => {
+  const email = req.body.email;
+  const password = req.body.password;
 
-  res.cookie("user_id");    //THIS SETS UP THE COOKIE WITH A NAME AND A VALUE OF USERNAME
+  if (!email || !password) {
+    return res.status(403).send("Email and password cannot be blank.");
+  }
+
+  const userEmail = getUserByEmail(users, email);
+  if (!userEmail) {
+    return res.status(403).send("Email does not exist.");
+  }
+
+
+  users[userId] = {          //SETS UP THE COOKIE OF USER_ID ONCE LOGGED IN
+    id: userId,
+    email: email,
+    password: password
+  };
+  res.cookie("user_id", userId);    //THIS SETS UP THE COOKIE WITH A NAME AND A VALUE OF USERNAME
   res.redirect("/urls");
+});
+
+app.get("/login", (req, res) => {
+  const templateVars = {
+    user: users[req.cookies["user_id"]]  
+  }
+  res.render("urls_login", templateVars)
 });
 
 
