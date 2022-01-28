@@ -1,15 +1,18 @@
 const express = require("express");
 const app = express();
 const PORT = 8080;
-const cookieParser = require("cookie-parser");
+const cookieSession = require("cookie-session");
 const bodyParser = require("body-parser");
-
+const bcrypt = require('bcryptjs');
 
 //MIDDLEWARE
 app.set("view engine", "ejs"); //RENDER TEMPLATES USING EJS
-app.use(cookieParser());
 app.use(bodyParser.urlencoded({extended: true}));
-
+app.use(cookieSession({
+  name: 'session',
+  keys: ['S3cR3t'],
+  maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}));
 
 
 //HELPER FUNCTIONS
@@ -74,7 +77,7 @@ const users = {
 
 //CREATE NEW PAGE
 app.get("/urls/new", (req, res) => {
-  const userId = req.cookies["user_id"];  
+  const userId = req.session["user_id"];  
   if (!users[userId]) {
     res.redirect("/login");
   } else {
@@ -83,14 +86,14 @@ app.get("/urls/new", (req, res) => {
       user: users[userId]
     };
     res.render("urls_new", templateVars);
-  }                                               //JUST RENDERS THE EJS TO THIS ROUTE
-})
+  }                                          //JUST RENDERS THE EJS TO THIS ROUTE
+});
 
 
 
 //MAIN PAGE
 app.get("/urls", (req, res) => {
-  const userId = req.cookies["user_id"];
+  const userId = req.session["user_id"];
   const templateVars = {
     urls: urlsForUser(userId, urlDatabase),
     user: users[userId]
@@ -108,44 +111,44 @@ app.get("/urls", (req, res) => {
 app.post("/login", (req, res) => {
   const email = req.body.email;
   const password = req.body.password;
-
+  
   if (!email || !password) {
     return res.status(403).send("Email and password cannot be blank.");
   }
 
-  const userEmail = getUserByEmail(users, email);
-  if (!userEmail) {
+  const user = getUserByEmail(users, email);
+  if (!user) {
     return res.status(403).send("Email does not exist.");
   }
 
-
-  users[userId] = {          //SETS UP THE COOKIE OF USER_ID ONCE LOGGED IN
-    id: userId,
-    email: email,
-    password: password
-  };
-  res.cookie("user_id", userId);    //THIS SETS UP THE COOKIE WITH A NAME AND A VALUE OF USERNAME
+  if(!bcrypt.compareSync(password, user.password)) {
+    return res.status(400).send("Password does not match.")
+  }
+  
+  req.session["user_id"] = user.id;
   res.redirect("/urls");
 });
 
 app.get("/login", (req, res) => {
+  const userId = req.session["user_id"];
   const templateVars = {
-    user: users[req.cookies["user_id"]]  
-  }
-  res.render("urls_login", templateVars)
+    urls: urlsForUser(userId, urlDatabase),
+    user: users[userId]
+  };
+  res.render("urls_login", templateVars);
 });
 
 
 //USER LOGOUT AND DELETE COOKIE
 app.post("/logout", (req, res) => {
-  res.clearCookie("user_id");  //CLEARS COOKIE WHICH IS USERNAME(USER LOGIN)
+  req.session = null;
   res.redirect("/urls");
 });
 
 
 //IF NEW URL, CREATE SHORTURL
 app.post("/urls", (req, res) => {
-  const userID = req.cookies["user_id"];
+  const userID = req.session["user_id"];
   const longURL = req.body.longURL;
   const shortURL = generateRandomString(6, "1234567890qwertyuioplkjhgfdsazxcvbnmQWERTYUIOPLKJHGFDSAZXCVBNM");
   urlDatabase[shortURL] = { longURL, userID };
@@ -155,46 +158,43 @@ app.post("/urls", (req, res) => {
 
 //USER REGISTRATION
 app.get("/register", (req, res) => {
+  const userId = req.session["user_id"];
   const templateVars = {
-    user: users[req.cookies["user_id"]]  
-  }
-  res.render("urls_register", templateVars)
+    urls: urlsForUser(userId, urlDatabase),
+    user: users[userId]
+  };
+  res.render("urls_register", templateVars);
 });
 
 
 
 app.post("/register", (req, res) => {
-  userId = generateRandomString(6, "1234567890qwertyuioplkjhgfdsazxcvbnmQWERTYUIOPLKJHGFDSAZXCVBNM")
-  email = req.body.email;
-  password = req.body.password;
+  const email = req.body.email;
+  const password = req.body.password;
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  const id = generateRandomString(6,"1234567890qwertyuioplkjhgfdsazxcvbnmQWERTYUIOPLKJHGFDSAZXCVBNM");
 
-  if (email === "" || password === "") {
-    return res.status(400).send("Email and password cannot be blank!")
-  } 
-
-  const userEmail = getUserByEmail(users, email)
-  
-  if (userEmail) {
-    return res.status(400).send("User already exists!")
+  if (email === "" || password === ""){
+    return res.status(404).send("Email and password cannot be blank.");
   }
-  
-
-    users[userId] = {
-      id: userId,
-      email: email,
-      password: password
-    };
-
-    res.cookie("user_id", userId);
-  
-  res.redirect("/urls", )
+  const userEmail = getUserByEmail(users, email);
+  if(userEmail) {
+    return res.status(404).send("User already exists.");
+  }
+  users[id] = {
+    id: id,
+    email: email,
+    password: hashedPassword
+  };
+  req.session["user_id"] = id;
+  res.redirect("/urls");
 });
 
 
 //NEW URL VIEW PAGE
 app.get("/urls/:shortURL", (req, res) => {
   const shortURL = req.params.shortURL;
-  const userId = req.cookies["user_id"];
+  const userId = req.session["user_id"];
   if (!urlDatabase[shortURL]) {
     res.status(404).send("This URL does not exist.");
   }
@@ -228,7 +228,7 @@ app.get("/u/:shortURL", (req, res) => {
 app.post("/urls/:shortURL", (req, res) => {
   const shortURL = req.params.shortURL;
   const longURL = req.body.longURL;
-  const userID = req.cookies["user_id"];
+  const userID = req.session["user_id"];
   urlDatabase[shortURL] = { longURL, userID };
 
   if (!users[userID]) {
@@ -253,7 +253,7 @@ app.post("/urls/:shortURL/edit", (req, res) => {
 
 //DELETES URL
 app.post("/urls/:shortURL/delete", (req, res) => {
-  const userId = req.cookies["user_id"];
+  const userId = req.session["user_id"];
   const shortURL = req.params.shortURL;
   if (!users[userId]) {
     res.status(401).send("You don't have the permission to delete this.");
